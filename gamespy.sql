@@ -19,14 +19,34 @@ CREATE TABLE stores
 				CONSTRAINT sotres_description_nn
 					NOT NULL,
 	postcode	VARCHAR2(10)
-				CONSTRAINT stores_postcode_chk
-					CHECK(TRIM(REGEXP_LIKE
-					(
-							'([A-PR-UWYZ0-9][A-HK-Y0-9][AEHMNPRTVXY0-9]?[ABEHMNPRVWXY0-9]{1,2}[0-9][ABD-HJLN-UW-Z]{2}|GIR 0AA)'
-					)))
 				CONSTRAINT stores_postcode_nn
-					NOT NULL
+					NOT NULL,
+				CONSTRAINT stores_postcode_chk
+					CHECK(REGEXP_LIKE(postcode,
+							'([A-PR-UWYZ0-9][A-HK-Y0-9][AEHMNPRTVXY0-9]?[ABEHMNPRVWXY0-9]{1,2}[0-9][ABD-HJLN-UW-Z]{2}|GIR 0AA)'
+					))			
 );
+
+CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_stores_before
+BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.store_id IS NULL THEN
+			SELECT seq_store_id.nextval
+			INTO   :NEW.store_id
+			FROM   sys.dual;
+		END IF;
+
+		-- Provide any formatting (always remove leading/trailing whitespace)
+		:NEW.name        := TRIM(INITCAP(:NEW.name));
+		:NEW.description := TRIM(:NEW.description);
+		:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
+		:NEW.postcode    := TRIM(UPPER(:NEW.postcode));
+
+	END IF;
+END;
 
 /*-----------------------------------------------------------------
 					   ITEMS TABLE:
@@ -69,8 +89,41 @@ CREATE TABLE items
 				CONSTRAINT items_console_id_nn
 					NOT NULL,
 	store_desc  VARCHAR2(4000),
-	store_price NUMBER DEFAULT(0)
+	store_price VARCHAR2(10) DEFAULT '0.00'
+				CONSTRAINT items_store_price_chk
+					CHECK(REGEXP_LIKE(store_price,
+								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
+					))
 );
+
+CREATE SEQUENCE seq_item_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_items_before
+BEFORE INSERT OR UPDATE ON items FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.item_id IS NULL THEN
+			SELECT seq_item_id.nextval
+			INTO   :NEW.item_id
+			FROM   sys.dual;
+		END IF;
+
+		-- Check that a price has been set, if not inherit from RRP
+		-- If we specify a console and no game, return the console price else return the game price into :NEW.store_price
+		IF :NEW.store_price IS NULL OR :NEW.store_price = '0.00' THEN
+			IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN 
+				:NEW.store_price := get_item_price(NULL, :NEW.console_id);				-- Return the console price
+			ELSE
+				:NEW.store_price := get_item_price(:NEW.game_id, NULL);					-- Return the game price
+			END IF;
+		END IF;
+
+		-- Provide any formatting (always remove leading/trailing whitespace)
+		:NEW.store_desc  := TRIM(:NEW.store_desc);
+		:NEW.store_price := TRIM(:NEW.store_price);
+
+	END IF;
+END;
 
 /*-----------------------------------------------------------------
 					  CONSOLES TABLE:
@@ -80,7 +133,7 @@ CREATE TABLE items
  console_id, they are also able to set their own additional 
  description and sales price through their items table.
 -------------------------------------------------------------------*/
-CREATE TABLE consoles
+CREATE TABLE  consoles
 (
 	console_id 	NUMBER(5)
 				CONSTRAINT consoles_console_id_pk
@@ -102,7 +155,11 @@ CREATE TABLE consoles
 	capacity	NUMBER(8) DEFAULT(0.00)
 				CONSTRAINT consoles_capacity_nn
 					NOT NULL,
-	rr_price    NUMBER DEFAULT(0.00)
+	rr_price    VARCHAR2(10) DEFAULT '0.00'
+				CONSTRAINT consoles_rr_price_chk
+					CHECK(REGEXP_LIKE(rr_price,
+								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
+					))
 				CONSTRAINT consoles_rr_price_nn
 					NOT NULL,
 	description VARCHAR2(4000)
@@ -110,6 +167,20 @@ CREATE TABLE consoles
 					NOT NULL,
 	tags		VARCHAR2(500)
 );
+
+CREATE SEQUENCE seq_console_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_console_before
+BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.console_id IS NULL THEN
+			SELECT seq_console_id.nextval
+			INTO   :NEW.console_id
+			FROM   sys.dual;
+		END IF;
+	END IF;
+END;
 
 /*-----------------------------------------------------------------
 					  MANUFACTURERS TABLE:
@@ -126,12 +197,26 @@ CREATE TABLE manufacturers
 	name        VARCHAR2(50)
 				CONSTRAINT manufacturers_name_nn
 					NOT NULL
-)
+);
+
+CREATE SEQUENCE seq_manufacturer_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_manufacturer_before
+BEFORE INSERT OR UPDATE ON manufacturers FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.manufac_id IS NULL THEN
+			SELECT seq_manufacturer_id.nextval
+			INTO   :NEW.manufac_id
+			FROM   sys.dual;
+		END IF;
+	END IF;
+END;
 
 /*-----------------------------------------------------------------
 					   PUBLISHERS TABLE:
 -------------------------------------------------------------------
- Contains all information on every publisher for each console
+ Contains all information on every publisher for each game
 -------------------------------------------------------------------*/
 CREATE TABLE publishers
 (
@@ -143,8 +228,21 @@ CREATE TABLE publishers
 	name        VARCHAR2(50)
 				CONSTRAINT publishers_name_nn
 					NOT NULL
-)
+);
 
+CREATE SEQUENCE seq_publisher_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_publisher_before
+BEFORE INSERT OR UPDATE ON publishers FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.publish_id IS NULL THEN
+			SELECT seq_publisher_id.nextval
+			INTO   :NEW.publish_id
+			FROM   sys.dual;
+		END IF;
+	END IF;
+END;
 
 /*-----------------------------------------------------------------
 					    GAMES TABLE:
@@ -192,9 +290,27 @@ CREATE TABLE games
 	description VARCHAR2(4000)
 				CONSTRAINT games_description_nn
 					NOT NULL,
-	tags        VARCHAR2(500),
-	rr_price    NUMBER DEFAULT(0.00)
+	rr_price    VARCHAR2(10) DEFAULT '0.00'
+				CONSTRAINT games_rr_price
+					CHECK(REGEXP_LIKE(rr_price,
+								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
+					)),
+	tags        VARCHAR2(500)				
 );
+
+CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_games_before
+BEFORE INSERT OR UPDATE ON games FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.game_id IS NULL THEN
+			SELECT seq_games_id.nextval
+			INTO   :NEW.game_id
+			FROM   sys.dual;
+		END IF;
+	END IF;
+END;
 
 /*-----------------------------------------------------------------
 						IMAGES TABLE:
@@ -207,33 +323,80 @@ CREATE TABLE games
  (search default) image, or OTHER (screenshots, product angle) image
  which will be displayed on the products gallery page.
 -------------------------------------------------------------------*/
-CREATE TABLE images
+CREATE TABLE store_images
 (
 	image_id	NUMBER(11)
-				CONSTRAINT images_image_id_pk
+				CONSTRAINT store_images_image_id_pk
 					PRIMARY KEY
-				CONSTRAINT images_image_id_nn
+				CONSTRAINT store_images_image_id_nn
 					NOT NULL,
 	game_id		NUMBER(11)
-				CONSTRAINT images_game_id_fk
+				CONSTRAINT store_images_game_id_fk
 					REFERENCES games(game_id) ON DELETE SET NULL,
 	console_id  NUMBER(11)
-				CONSTRAINT images_console_id_fk
+				CONSTRAINT store_images_console_id_fk
 					REFERENCES consoles(console_id) ON DELETE SET NULL,
 	filename	VARCHAR(50)
-				CONSTRAINT images_filename_nn
+				CONSTRAINT store_images_filename_nn
 					NOT NULL,
 	priority    VARCHAR(15)
-				CONSTRAINT images_priority_nn
+				CONSTRAINT store_images_priority_nn
 					NOT NULL
-				CONSTRAINT images_priority_chk
+				CONSTRAINT store_images_priority_chk
 					CHECK
 					(	
 						UPPER(priority) = 'COVER' OR 
 						UPPER(priority) = 'OTHER' 
 				    ),
 	image 		ORDIMAGE
-				CONSTRAINT images_image_nn 
+				CONSTRAINT store_images_image_nn 
 					NOT NULL,
 	thumbnail	BLOB
 );
+
+CREATE SEQUENCE seq_store_image_id START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER trg_store_images_before
+BEFORE INSERT OR UPDATE ON store_images FOR EACH ROW
+	BEGIN
+	IF INSERTING THEN 
+		IF :NEW.image_id IS NULL THEN
+			SELECT seq_store_image_id.nextval
+			INTO   :NEW.image_id
+			FROM   sys.dual;
+		END IF;
+	END IF;
+END;
+
+
+/*-----------------------------------------------------------------
+						GET ITEM PRICE
+-------------------------------------------------------------------
+ Returns the price of the given game or console ID
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION get_item_price
+(
+	this_game		games.game_id%TYPE,
+	this_console	consoles.console_id%TYPE
+)
+	RETURN STRING
+IS
+	this_price		STRING(50);
+BEGIN
+	-- Check that we have been given a console
+	IF this_console IS NOT NULL THEN
+		SELECT consoles.rr_price
+		INTO   this_price
+		FROM   consoles
+		WHERE  consoles.console_id = this_console;
+    -- If a console isn't specified, then check for a game
+	ELSIF this_game IS NOT NULL THEN
+		SELECT games.rr_price
+		INTO   this_price
+		FROM   games
+		WHERE  games.game_id = this_game;
+	END IF;
+
+	-- Return the price string
+	RETURN this_price;
+END get_item_price;
