@@ -93,7 +93,8 @@ CREATE TABLE items
 				CONSTRAINT items_store_price_chk
 					CHECK(REGEXP_LIKE(store_price,
 								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
-					))
+					)),
+	quantity	NUMBER(5) DEFAULT 0
 );
 
 CREATE SEQUENCE seq_item_id START WITH 1 INCREMENT BY 1;
@@ -108,8 +109,8 @@ BEFORE INSERT OR UPDATE ON items FOR EACH ROW
 			FROM   sys.dual;
 		END IF;
 
-		-- Check that a price has been set, if not inherit from RRP
-		-- If we specify a console and no game, return the console price else return the game price into :NEW.store_price
+		-- Check that a price has been set, if not inherit from RRP, if we specify a console and no game, 
+		-- return the console price else return the game price into :NEW.store_price
 		IF :NEW.store_price IS NULL OR :NEW.store_price = '0.00' THEN
 			IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN 
 				:NEW.store_price := get_item_price(NULL, :NEW.console_id);				-- Return the console price
@@ -117,6 +118,17 @@ BEFORE INSERT OR UPDATE ON items FOR EACH ROW
 				:NEW.store_price := get_item_price(:NEW.game_id, NULL);					-- Return the game price
 			END IF;
 		END IF;
+
+		-- Check that the store has set their own description for the game, if not
+		-- then we shall just inherit the publishers description.
+		IF :NEW.store_desc IS NULL THEN
+			IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN
+				:NEW.store_desc := get_item_desc(NULL, :NEW.console_id);
+			ELSE
+				:NEW.store_desc := get_item_desc(:NEW.game_id, NULL);
+			END IF;
+		END IF;
+
 
 		-- Provide any formatting (always remove leading/trailing whitespace)
 		:NEW.store_desc  := TRIM(:NEW.store_desc);
@@ -398,3 +410,35 @@ BEGIN
 	-- Return the price string
 	RETURN this_price;
 END get_item_price;
+
+/*-----------------------------------------------------------------
+					GET ITEM DESCRIPTION
+-------------------------------------------------------------------
+ Returns the description of the given game or console ID
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION get_item_desc
+(
+	this_game		games.game_id%TYPE,
+	this_console	consoles.console_id%TYPE
+)
+	RETURN STRING
+IS
+	this_desc		STRING(5000);
+BEGIN
+	-- Check we have been given a console
+	IF this_console IS NOT NULL THEN
+		SELECT  consoles.description
+		INTO 	this_desc
+		FROM 	consoles
+		WHERE   consoles.console_id = this_console;
+	-- If a console wasn't specified then check for a game
+	ELSIF this_game IS NOT NULL THEN
+		SELECT	games.description
+		INTO 	this_desc
+		FROM    games
+		WHERE   games.game_id = this_game;
+	END IF;
+
+	-- Return the product description
+	RETURN this_desc;
+END get_item_desc;
