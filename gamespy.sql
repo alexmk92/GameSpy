@@ -152,9 +152,6 @@ CREATE TABLE  consoles
 	release		DATE
 				CONSTRAINT consoles_release_nn
 					NOT NULL,
-	capacity	NUMBER(8) DEFAULT(0.00)
-				CONSTRAINT consoles_capacity_nn
-					NOT NULL,
 	rr_price    VARCHAR2(10) DEFAULT '0.00'
 				CONSTRAINT consoles_rr_price_chk
 					CHECK(REGEXP_LIKE(rr_price,
@@ -273,6 +270,7 @@ CREATE TABLE games
 						-- there arent many categories so we can remove table dependency
 						UPPER(category) = 'RPG'      OR
 						UPPER(category) = 'ACTION'   OR
+						UPPER(category) = 'SPORT'    OR
 						UPPER(category) = 'STRATEGY' OR
 						UPPER(category) = 'FPS'      OR
 						UPPER(category) = 'RTS'      OR
