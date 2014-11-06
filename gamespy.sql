@@ -27,6 +27,8 @@ CREATE TABLE stores
 					))			
 );
 
+CREATE INDEX stores_desc_ctx_idx ON stores(description) INDEXTYPE IS ctxsys.context;
+
 CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1;
 
 CREATE OR REPLACE TRIGGER trg_stores_before
@@ -96,6 +98,8 @@ CREATE TABLE items
 					)),
 	quantity	NUMBER(5) DEFAULT 0
 );
+
+CREATE INDEX items_desc_ctx_idx ON items(store_desc) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_item_id START WITH 1 INCREMENT BY 1;
 
@@ -176,6 +180,9 @@ CREATE TABLE  consoles
 					NOT NULL,
 	tags		VARCHAR2(500)
 );
+
+CREATE INDEX consoles_desc_ctx_idx ON consoles(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX consoles_tags_ctx_idx ON consoles(tags) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_console_id START WITH 1 INCREMENT BY 1;
 
@@ -307,6 +314,10 @@ CREATE TABLE games
 					)),
 	tags        VARCHAR2(500)				
 );
+
+CREATE INDEX games_desc_ctx_idx      ON games(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX games_title_ctx_idx     ON games(title) INDEXTYPE IS ctxsys.context;
+CREATE INDEX games_tags_ctx_idx      ON games(tags) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1;
 
@@ -442,3 +453,94 @@ BEGIN
 	-- Return the product description
 	RETURN this_desc;
 END get_item_desc;
+
+/*-----------------------------------------------------------------
+					  LOAD IMAGE FROM FILE
+-------------------------------------------------------------------
+ Load the contents of uploaded BLOB images from a filename
+-------------------------------------------------------------------*/
+CREATE OR REPLACE PROCEDURE create_image_from_file
+(
+	p_filename	 IN VARCHAR2,
+	p_priority   IN VARCHAR2,
+	p_console_id consoles.console_id%TYPE,
+	p_game_id    games.game_id%TYPE
+)
+AS 
+	l_image_id	INTEGER;
+	l_image 	ORDSYS.ORDImage;
+	ctx 		RAW(4000);
+BEGIN
+	INSERT INTO store_images
+	(
+		image_id,
+		game_id,
+		console_id,
+		filename,
+		priority,
+		image
+	)
+	VALUES 
+	(
+		seq_store_image_id.nextval, 
+		p_game_id,
+		p_console_id,
+		p_filename,
+		p_priority,
+		ORDSYS.ORDImage
+		(
+			'FILE',
+			'ISAD330_IMAGES',
+			p_filename
+		)
+	);
+	COMMIT;
+END;
+
+
+/*-----------------------------------------------------------------
+					   GAMES CONTENT SEARCH
+-------------------------------------------------------------------
+ Text search for the games table
+-------------------------------------------------------------------*/
+DECLARE
+
+  l_query VARCHAR2(4000);
+
+BEGIN
+
+	-- Assign values to the base query object
+	l_query :=
+        'SELECT 
+         "GAME_ID",
+         "PUBLISHER",
+         "CATEGORY",
+         "TITLE",
+         "RELEASE",
+         "DESCRIPTION",
+         "RR_PRICE",
+         "TAGS"
+         FROM "GAMES"
+         ';
+        
+    -- Append to the query, only if we have a valid search string, else return
+    -- all games in the table.
+    IF :P1_REPORT_SEARCH IS NOT NULL AND :P1_CATEGORY IS NOT NULL THEN
+        l_query := l_query || ' ' || q'{
+	               WHERE
+	               (
+	                   CONTAINS(description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	                   CONTAINS(title,       '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	                   CONTAINS(tags,        '$}'||:P1_REPORT_SEARCH||q'{') > 0 
+	               ) AND category = :P1_CATEGORY }';
+    ELSIF :P1_REPORT_SEARCH IS NOT NULL AND :P1_CATEGORY IS NULL THEN
+		l_query := l_query || ' ' || q'{
+	               WHERE
+	               (
+	                   CONTAINS(description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	                   CONTAINS(title,       '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	                   CONTAINS(tags,        '$}'||:P1_REPORT_SEARCH||q'{') > 0 
+	               )}';
+    END IF;
+RETURN l_query;
+END;
