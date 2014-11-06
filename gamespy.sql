@@ -178,7 +178,12 @@ CREATE TABLE  consoles
 	description VARCHAR2(4000)
 				CONSTRAINT consoles_description_nn
 					NOT NULL,
-	tags		VARCHAR2(500)
+	tags		VARCHAR2(500),
+	cover_image NUMBER(11)
+			CONSTRAINT consoles_cover_image_fk
+				REFERENCES store_images(image_id)
+			CONSTRAINT consoles_cover_image_nn
+				NOT NULL
 );
 
 CREATE INDEX consoles_desc_ctx_idx ON consoles(description) INDEXTYPE IS ctxsys.context;
@@ -194,6 +199,11 @@ BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
 			SELECT seq_console_id.nextval
 			INTO   :NEW.console_id
 			FROM   sys.dual;
+		END IF;
+
+		-- Get the default image if one isn't set
+		IF :NEW.cover_image IS NULL THEN
+			:NEW.cover_image := get_default_image();
 		END IF;
 	END IF;
 END;
@@ -312,7 +322,12 @@ CREATE TABLE games
 					CHECK(REGEXP_LIKE(rr_price,
 								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
 					)),
-	tags        VARCHAR2(500)				
+	tags        VARCHAR2(500),
+	cover_image NUMBER(11)
+				CONSTRAINT games_cover_image_fk
+					REFERENCES store_images(image_id)
+				CONSTRAINT games_cover_image_nn
+					NOT NULL				
 );
 
 CREATE INDEX games_desc_ctx_idx      ON games(description) INDEXTYPE IS ctxsys.context;
@@ -329,6 +344,11 @@ BEFORE INSERT OR UPDATE ON games FOR EACH ROW
 			SELECT seq_games_id.nextval
 			INTO   :NEW.game_id
 			FROM   sys.dual;
+		END IF;
+
+		-- Get the default image from the store_images table
+		IF :NEW.cover_image IS NULL THEN
+			:NEW.cover_image := get_default_image();
 		END IF;
 	END IF;
 END;
@@ -455,7 +475,28 @@ BEGIN
 END get_item_desc;
 
 /*-----------------------------------------------------------------
-					  LOAD IMAGE FROM FILE
+					   GET DEFAULT IMAGE
+-------------------------------------------------------------------
+ Returns the Foreign Key reference of the default image in the
+ store_images table
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION get_default_image
+	RETURN NUMBER
+IS
+	default_image 	NUMBER(11);
+BEGIN
+	-- Select the default value into the return value
+	SELECT image_id
+	INTO   default_image
+	FROM   store_images
+	WHERE  store_images.filename = 'default.jpg';
+
+	-- Return the default value
+	RETURN default_image;
+END get_default_image;
+
+/*-----------------------------------------------------------------
+					 CREATE IMAGE FROM FILE
 -------------------------------------------------------------------
  Load the contents of uploaded BLOB images from a filename
 -------------------------------------------------------------------*/
@@ -497,6 +538,48 @@ BEGIN
 	COMMIT;
 END;
 
+/*-----------------------------------------------------------------
+					   CREATE THUMBNAIL
+-------------------------------------------------------------------
+ Text search for the games table
+-------------------------------------------------------------------*/
+GRANT EXECUTE ON create_blob_thumbnail TO APEX_PUBLIC_USER;
+CREATE OR REPLACE PROCEDURE create_blob_thumbnail
+(
+	p_image_id IN INTEGER 
+)
+IS
+	l_orig		 ORDSYS.ORDImage;
+	l_thumb 	 ORDSYS.ORDImage;
+	l_blob_thumb BLOB;
+BEGIN
+	-- acquire lock on row
+	SELECT image
+	INTO   l_orig
+	FROM   store_images
+	WHERE  image_id = p_image_id FOR UPDATE;
+
+	-- Create a new ORDImage object
+	l_thumb := ORDSYS.ORDImage.Init();
+
+	-- Copy the original image into the newly initiated thumbnail with a the 128x128 size
+	dbms_lob.createTemporary(l_thumb.source.localData, true);
+	ORDSYS.ORDImage.processCopy (
+									l_orig,
+									'maxscale = 128 128',
+									l_thumb
+								);
+
+	-- Extract BLOB data from the newly populated thumbnail of type ORDImage
+	UPDATE store_images
+	SET    thumbnail = l_thumb.source.localData 
+	WHERE  image_id  = p_image_id;
+
+	-- Empty the temporary object and commit the transaction (clean up)
+	dbms_lob.freeTemporary(l_thumb.source.localData);
+
+	COMMIT;
+END;
 
 /*-----------------------------------------------------------------
 					   GAMES CONTENT SEARCH
