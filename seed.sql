@@ -1,4 +1,5 @@
 -- Test data for gamespy, all data must be input in order to avoid dependence errors
+BEGIN
 
 -- Publishers
 INSERT INTO publishers VALUES('', 'Activision');
@@ -21,7 +22,7 @@ INSERT INTO games VALUES('', 2, 'FPS', 'Call of Duty : Advanced Warfare', SYSDAT
 INSERT INTO games VALUES('', 1, 'FPS', 'Call of Duty : Modern Warfare 3', '20/JAN/2014', 'Last years COD game', '35.00', 'some tags');
 INSERT INTO games VALUES('', 6, 'SPORT', 'FIFA 15', SYSDATE, 'The latest FIFA game', '50.00', 'some tags');
 INSERT INTO games VALUES('', 6, 'SPORT', 'FIFA 12', SYSDATE, '2012 FIFA game', '5.00', 'some tags');
-INSERT INTO games VALUES('', 5, 'MMO', 'World of Warcraft : Warlords of Draenor', SYSDATE, 'The latest expansion content for WoW', '42.50', 'some tags');
+INSERT INTO games VALUES('', 5, 'MMO', q'{World of Warcraft : Warlords of Draenor}', SYSDATE, 'The latest expansion content for WoW', '42.50', 'some tags');
 INSERT INTO games VALUES('', 2, 'MMO', 'EverQuest Next', SYSDATE, 'The latest EverQuest game, a revolution for MMOs', '50.00', 'some tags');
 
 -- Console test data
@@ -43,3 +44,6 @@ INSERT INTO items VALUES('', 1, 1, 1, 'This new game is amazing', null);
 INSERT INTO items VALUES('', 1, 1, 3, 'This new game is amazing', '70.00');
 -- Blank description and price, see if it inherits both
 INSERT INTO items VALUES('', 1, 6, 4, null, null);
+
+COMMIT;
+END;
