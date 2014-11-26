@@ -507,6 +507,7 @@ CREATE OR REPLACE PROCEDURE create_image_from_file
 (
 	p_filename	 IN VARCHAR2,
 	p_priority   IN VARCHAR2,
+	p_store_id   stores.store_id%TYPE,
 	p_console_id consoles.console_id%TYPE,
 	p_game_id    games.game_id%TYPE
 )
@@ -515,9 +516,14 @@ AS
 	l_image 	ORDSYS.ORDImage;
 	ctx 		RAW(4000);
 BEGIN
+	-- Get the next image_id value, use this for creating thumbnail and INSERT statement
+	l_image_id = seq_store_image_id.nextval
+
+	-- Prepare the insert statement
 	INSERT INTO store_images
 	(
 		image_id,
+		store_id,
 		game_id,
 		console_id,
 		filename,
@@ -526,7 +532,8 @@ BEGIN
 	)
 	VALUES 
 	(
-		seq_store_image_id.nextval, 
+		l_image_id, 
+		p_store_id,
 		p_game_id,
 		p_console_id,
 		p_filename,
@@ -538,6 +545,10 @@ BEGIN
 			p_filename
 		)
 	);
+
+	-- Create a thumbnail for the given image and COMMIT changes to the db.
+	create_blob_thumbnail(l_image_id)
+
 	COMMIT;
 END;
 
