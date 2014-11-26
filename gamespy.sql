@@ -371,6 +371,9 @@ CREATE TABLE store_images
 					PRIMARY KEY
 				CONSTRAINT store_images_image_id_nn
 					NOT NULL,
+	store_id    NUMBER(11)
+				CONSTRAINT store_imagesstored_id_fk
+					REFERENCES stores(store_id) ON DELETE SET NULL,
 	game_id		NUMBER(11)
 				CONSTRAINT store_images_game_id_fk
 					REFERENCES games(game_id) ON DELETE SET NULL,
