@@ -32,7 +32,7 @@ CREATE TABLE stores
 CREATE INDEX stores_desc_ctx_idx  ON stores(description) INDEXTYPE IS ctxsys.context;
 CREATE INDEX stores_location_idx  ON stores(location)    INDEXTYPE IS MDSYS.SPATIAL_INDEX;
 
-CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_stores_before
 BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
@@ -104,7 +104,7 @@ CREATE TABLE items
 
 CREATE INDEX items_desc_ctx_idx ON items(store_desc) INDEXTYPE IS ctxsys.context;
 
-CREATE SEQUENCE seq_item_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_item_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_items_before
 BEFORE INSERT OR UPDATE ON items FOR EACH ROW
@@ -186,7 +186,7 @@ CREATE TABLE  consoles
 
 CREATE INDEX consoles_desc_ctx_idx ON consoles(description) INDEXTYPE IS ctxsys.context;
 
-CREATE SEQUENCE seq_console_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_console_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_console_before
 BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
@@ -217,7 +217,7 @@ CREATE TABLE manufacturers
 					NOT NULL
 );
 
-CREATE SEQUENCE seq_manufacturer_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_manufacturer_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_manufacturer_before
 BEFORE INSERT OR UPDATE ON manufacturers FOR EACH ROW
@@ -248,7 +248,7 @@ CREATE TABLE publishers
 					NOT NULL
 );
 
-CREATE SEQUENCE seq_publisher_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_publisher_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_publisher_before
 BEFORE INSERT OR UPDATE ON publishers FOR EACH ROW
@@ -320,7 +320,7 @@ CREATE TABLE games
 
 CREATE INDEX games_desc_ctx_idx      ON games(description) INDEXTYPE IS ctxsys.context;
 
-CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_games_before
 BEFORE INSERT OR UPDATE ON games FOR EACH ROW
@@ -373,13 +373,13 @@ CREATE TABLE store_images
 						UPPER(priority) = 'COVER' OR 
 						UPPER(priority) = 'OTHER' 
 				    ),
-	image 		ORDIMAGE
+	image 		ORDSYS.ORDIMAGE
 				CONSTRAINT store_images_image_nn 
 					NOT NULL,
 	thumbnail	BLOB
 );
 
-CREATE SEQUENCE seq_store_image_id START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE seq_store_image_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
 CREATE OR REPLACE TRIGGER trg_store_images_before
 BEFORE INSERT OR UPDATE ON store_images FOR EACH ROW
