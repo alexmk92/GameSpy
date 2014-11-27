@@ -36,31 +36,22 @@ CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1;
 CREATE OR REPLACE TRIGGER trg_stores_before
 BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
 	BEGIN
-	IF INSERTING THEN 
+	IF INSERTING THEN
 		IF :NEW.store_id IS NULL THEN
 			SELECT seq_store_id.nextval
 			INTO   :NEW.store_id
 			FROM   sys.dual;
 		END IF;
+
+		-- Provide any formatting (always remove leading/trailing whitespace)
+		:NEW.name        := TRIM(INITCAP(:NEW.name));
+		:NEW.description := TRIM(:NEW.description);
+		:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
+		:NEW.postcode    := TRIM(REPLACE(UPPER(:NEW.postcode), ' ', ''));
+
+		-- Assign the geometry object to put this store on the map!
+		:NEW.location    := set_spatial_point(:NEW.postcode);
 	END IF;
-
-	-- Provide any formatting (always remove leading/trailing whitespace)
-	:NEW.name        := TRIM(INITCAP(:NEW.name));
-	:NEW.description := TRIM(:NEW.description);
-	:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
-	:NEW.postcode    := TRIM(REPLACE(UPPER(:NEW.postcode), ' ', ''));
-
-	-- Assign the geometry object to put this store on the map!
-	:NEW.location    := set_spatial_point(:NEW.postcode);
-
-	-- Set the image for the store
-	create_image_from_file(
-			:NEW.name || '_image',
-			'COVER',
-			:NEW.store_id,
-			null,
-			null
-	);
 END;
 
 /*-----------------------------------------------------------------
@@ -149,15 +140,6 @@ BEFORE INSERT OR UPDATE ON items FOR EACH ROW
 	-- Provide any formatting (always remove leading/trailing whitespace)
 	:NEW.store_desc  := TRIM(:NEW.store_desc);
 	:NEW.store_price := TRIM(:NEW.store_price);
-
-	-- Set the image for the item
-	create_image_from_file(
-			get_item_name(:NEW.game_id, :NEW.console_id) || '_image',
-			'OTHER',
-			:NEW.store_id,
-			:NEW.console_id,
-			:NEW.game_id
-	);
 END;
 
 /*-----------------------------------------------------------------
@@ -197,16 +179,10 @@ CREATE TABLE  consoles
 	description VARCHAR2(4000)
 				CONSTRAINT consoles_description_nn
 					NOT NULL,
-	tags		VARCHAR2(500),
-	cover_image NUMBER(11)
-			CONSTRAINT consoles_cover_image_fk
-				REFERENCES store_images(image_id)
-			CONSTRAINT consoles_cover_image_nn
-				NOT NULL
+	tags		VARCHAR2(500)
 );
 
 CREATE INDEX consoles_desc_ctx_idx ON consoles(description) INDEXTYPE IS ctxsys.context;
-CREATE INDEX consoles_tags_ctx_idx ON consoles(tags) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_console_id START WITH 1 INCREMENT BY 1;
 
@@ -220,20 +196,6 @@ BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
 			FROM   sys.dual;
 		END IF;
 	END IF;
-
-	-- Get the default image if one isn't set
-	IF :NEW.cover_image IS NULL THEN
-		:NEW.cover_image := get_default_image();
-	ELSE
-		-- Create a new image for this item
-		create_image_from_file(
-			:NEW.name || '_cover_image',
-			'COVER',
-			null,
-			:NEW.console_id,
-			null
-		)
-	ENDIF;
 END;
 
 /*-----------------------------------------------------------------
@@ -350,17 +312,10 @@ CREATE TABLE games
 					CHECK(REGEXP_LIKE(rr_price,
 								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
 					)),
-	tags        VARCHAR2(500),
-	cover_image NUMBER(11)
-				CONSTRAINT games_cover_image_fk
-					REFERENCES store_images(image_id)
-				CONSTRAINT games_cover_image_nn
-					NOT NULL				
+	tags        VARCHAR2(500)		
 );
 
 CREATE INDEX games_desc_ctx_idx      ON games(description) INDEXTYPE IS ctxsys.context;
-CREATE INDEX games_title_ctx_idx     ON games(title) INDEXTYPE IS ctxsys.context;
-CREATE INDEX games_tags_ctx_idx      ON games(tags) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1;
 
@@ -374,20 +329,6 @@ BEFORE INSERT OR UPDATE ON games FOR EACH ROW
 			FROM   sys.dual;
 		END IF;
 	END IF;
-
-	-- Get the default image if one isn't set
-	IF :NEW.cover_image IS NULL THEN
-		:NEW.cover_image := get_default_image();
-	ELSE
-		-- Create a new image for this item
-		create_image_from_file(
-			:NEW.name || '_cover_image',
-			'COVER',
-			null,
-			null,
-			:NEW.game_id
-		)
-	ENDIF;
 END;
 
 /*-----------------------------------------------------------------
@@ -526,44 +467,44 @@ CREATE OR REPLACE FUNCTION get_item_name
 )
 	RETURN STRING
 IS
-	this_game		STRING(70);
-	this_console    STRING(70);
+	r_this_game		  STRING(70);
+	r_this_console    STRING(70);
 BEGIN
 
 	-- We have a game with a specified platform, return the formatted string
-	IF ((this_game IS NOT NULL) AND (this_console IS NOT NULL)) THEN
-		SELECT games.name
-		INTO   this_game
+	IF this_game IS NOT NULL AND this_console IS NOT NULL THEN
+		SELECT games.title
+		INTO   r_this_game
 		FROM   games
-		WHERE  games.game_id = this_game
+		WHERE  games.game_id = this_game;
 
 		SELECT consoles.name
-		INTO   this_console
+		INTO   r_this_console
 		FROM   consoles
-		WHERE  consoles.console_id = this_console
+		WHERE  consoles.console_id = this_console;
 
 		-- Return a formatted game string with its associated platform
-		RETURN this_game || '_' || this_console
+		RETURN r_this_game || '_' || r_this_console;
 
 	-- Check we have been given a console
-	ELSIFIF this_console IS NOT NULL THEN
+	ELSIF this_console IS NOT NULL THEN
 		SELECT  consoles.name
-		INTO 	this_console
+		INTO 	r_this_console
 		FROM 	consoles
 		WHERE   consoles.console_id = this_console;
 
 		-- Return a console string
-		RETURN this_console;
+		RETURN r_this_console;
 
 	-- If a console wasn't specified then check for a game, games are specified by a GAME or GAME and CONSOLE
-	ELSIF (this_game IS NOT NULL) THEN
-		SELECT	games.name
-		INTO 	this_game
+	ELSIF this_game IS NOT NULL THEN
+		SELECT	games.title
+		INTO 	r_this_game
 		FROM    games
 		WHERE   games.game_id = this_game;
 
 		-- Return a game string
-		RETURN this_game;
+		RETURN r_this_game;
 	END IF;
 
 	-- Return a blank string if all fall through (there was an error)
@@ -640,12 +581,14 @@ BEGIN
 	RETURN n_spatial_object;
 END set_spatial_point;
 
+
 /*-----------------------------------------------------------------
 					 CREATE IMAGE FROM FILE
 -------------------------------------------------------------------
- Load the contents of uploaded BLOB images from a filename
+ Upload a new file to the database
 -------------------------------------------------------------------*/
-CREATE OR REPLACE PROCEDURE create_image_from_file
+GRANT EXECUTE ON upload_image TO APEX_PUBLIC_USER 
+CREATE OR REPLACE PROCEDURE upload_image
 (
 	p_filename	 IN VARCHAR2,
 	p_priority   IN VARCHAR2,
@@ -654,14 +597,23 @@ CREATE OR REPLACE PROCEDURE create_image_from_file
 	p_game_id    games.game_id%TYPE
 )
 AS 
-	l_image_id	INTEGER;
-	l_image 	ORDSYS.ORDImage;
-	ctx 		RAW(4000);
+	l_upload_size INTEGER;
+	l_upload_blob BLOB;
+	l_image_id	  INTEGER;
+	l_image 	  ORDSYS.ORDImage;
 BEGIN
-	-- Set the image id
-	l_image_id = seq_store_image_id.nextval
 
-	-- Insert the new values
+	-- Get the length, MIME type and the BLOB of the new image from the upload table 
+	-- apex_application_files is a synonym for WWV_FLOW_FILES
+	SELECT  doc_size,
+			blob_content
+	INTO    l_upload_size,
+			l_upload_blob
+	FROM 	apex_application_files
+	WHERE   name = p_filename;
+
+	-- Insert the new row into table, initialising the new image and returning the new allocated image_id
+	-- into the l_image_id for later use, the image is later set with an update
 	INSERT INTO store_images
 	(
 		image_id,
@@ -674,24 +626,48 @@ BEGIN
 	)
 	VALUES 
 	(
-		l_image_id, 
+		seq_store_image_id.nextval, 
 		p_store_id,
 		p_game_id,
 		p_console_id,
 		p_filename,
 		p_priority,
-		ORDSYS.ORDImage
-		(
-			'FILE',
-			'ISAD330_IMAGES',
-			p_filename
-		)
-	);
+		ORDSYS.ORDImage()
+	)
+	RETURNING image_id
+	INTO l_image_id;
+
+	-- Lock the row
+	SELECT image
+	INTO   l_image
+	FROM   store_images
+	WHERE  image_id = l_image_id
+	FOR UPDATE;
+
+	-- Copy the blobk into the ORDImage BLOB container
+	DBMS_LOB.copy( l_image.source.localData, l_upload_blob, l_upload_size );
+	l_image.setProperties();
+
+	-- Update the store images table with the newly created image
+	UPDATE store_images
+	SET image = l_image
+	WHERE image_id = l_image_id;
+
+	-- Clear the file from the upload table
+	DELETE FROM apex_application_files
+	WHERE name = p_filename;
+
+	-- Create thumbnail
+	create_blob_thumbnail(l_image_id)
+
+	-- Release lock and commit changes.
 	COMMIT;
 
-	-- Create a new blob thumbnail with the new image id
-	create_blob_thumbnail(l_image_id);
-END;
+	-- Exception handler for locks
+	EXCEPTION 
+	WHEN others
+	THEN htp.p(SQLERRM);
+END upload_image;
 
 /*-----------------------------------------------------------------
 					   CREATE THUMBNAIL
