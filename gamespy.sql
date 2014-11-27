@@ -52,6 +52,15 @@ BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
 
 	-- Assign the geometry object to put this store on the map!
 	:NEW.location    := set_spatial_point(:NEW.postcode);
+
+	-- Set the image for the store
+	create_image_from_file(
+			:NEW.name || '_image',
+			'COVER',
+			:NEW.store_id,
+			null,
+			null
+	);
 END;
 
 /*-----------------------------------------------------------------
@@ -89,11 +98,9 @@ CREATE TABLE items
 				CONSTRAINT items_store_id_nn
 					NOT NULL,
 	game_id     CONSTRAINT items_game_id_fk
-					REFERENCES games(game_id),
+					REFERENCES games(game_id) ON DELETE SET NULL,
 	console_id  CONSTRAINT items_console_id_fk
-					REFERENCES consoles(console_id)
-				CONSTRAINT items_console_id_nn
-					NOT NULL,
+					REFERENCES consoles(console_id) ON DELETE SET NULL,
 	store_desc  VARCHAR2(4000),
 	store_price VARCHAR2(10) DEFAULT '0.00'
 				CONSTRAINT items_store_price_chk
@@ -116,33 +123,41 @@ BEFORE INSERT OR UPDATE ON items FOR EACH ROW
 			INTO   :NEW.item_id
 			FROM   sys.dual;
 		END IF;
-
-		-- Check that a price has been set, if not inherit from RRP, if we specify a console and no game, 
-		-- return the console price else return the game price into :NEW.store_price
-		IF :NEW.store_price IS NULL OR :NEW.store_price = '0.00' THEN
-			IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN 
-				:NEW.store_price := get_item_price(NULL, :NEW.console_id);				-- Return the console price
-			ELSE
-				:NEW.store_price := get_item_price(:NEW.game_id, NULL);					-- Return the game price
-			END IF;
-		END IF;
-
-		-- Check that the store has set their own description for the game, if not
-		-- then we shall just inherit the publishers description.
-		IF :NEW.store_desc IS NULL THEN
-			IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN
-				:NEW.store_desc := get_item_desc(NULL, :NEW.console_id);
-			ELSE
-				:NEW.store_desc := get_item_desc(:NEW.game_id, NULL);
-			END IF;
-		END IF;
-
-
-		-- Provide any formatting (always remove leading/trailing whitespace)
-		:NEW.store_desc  := TRIM(:NEW.store_desc);
-		:NEW.store_price := TRIM(:NEW.store_price);
-
 	END IF;
+
+	-- Check that a price has been set, if not inherit from RRP, if we specify a console and no game, 
+	-- return the console price else return the game price into :NEW.store_price
+	IF :NEW.store_price IS NULL OR :NEW.store_price = '0.00' THEN
+		IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN 
+			:NEW.store_price := get_item_price(NULL, :NEW.console_id);				-- Return the console price
+		ELSE
+			:NEW.store_price := get_item_price(:NEW.game_id, NULL);					-- Return the game price
+		END IF;
+	END IF;
+
+	-- Check that the store has set their own description for the game, if not
+	-- then we shall just inherit the publishers description.
+	IF :NEW.store_desc IS NULL THEN
+		IF :NEW.game_id IS NULL AND :NEW.console_id IS NOT NULL THEN
+			:NEW.store_desc := get_item_desc(NULL, :NEW.console_id);
+		ELSE
+			:NEW.store_desc := get_item_desc(:NEW.game_id, NULL);
+		END IF;
+	END IF;
+
+
+	-- Provide any formatting (always remove leading/trailing whitespace)
+	:NEW.store_desc  := TRIM(:NEW.store_desc);
+	:NEW.store_price := TRIM(:NEW.store_price);
+
+	-- Set the image for the item
+	create_image_from_file(
+			get_item_name(:NEW.game_id, :NEW.console_id) || '_image',
+			'COVER',
+			:NEW.store_id,
+			null,
+			null
+	);
 END;
 
 /*-----------------------------------------------------------------
@@ -482,6 +497,38 @@ BEGIN
 END get_item_desc;
 
 /*-----------------------------------------------------------------
+					GET ITEM NAME
+-------------------------------------------------------------------
+ Returns the name of the console or game
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION get_item_name
+(
+	this_game		games.game_id%TYPE,
+	this_console	consoles.console_id%TYPE
+)
+	RETURN STRING
+IS
+	this_name		STRING(5000);
+BEGIN
+	-- Check we have been given a console
+	IF this_console IS NOT NULL THEN
+		SELECT  consoles.name
+		INTO 	this_name
+		FROM 	consoles
+		WHERE   consoles.console_id = this_console;
+	-- If a console wasn't specified then check for a game, games are specified by a GAME or GAME and CONSOLE
+	ELSIF (this_game IS NOT NULL) OR ((this_game IS NOT NULL) AND (this_console IS NOT NULL)) THEN
+		SELECT	games.name
+		INTO 	this_name
+		FROM    games
+		WHERE   games.game_id = this_game;
+	END IF;
+
+	-- Return the product description
+	RETURN this_name;
+END get_item_name;
+
+/*-----------------------------------------------------------------
 					   GET DEFAULT IMAGE
 -------------------------------------------------------------------
  Returns the Foreign Key reference of the default image in the
@@ -599,7 +646,7 @@ BEGIN
 		)
 	);
 	COMMIT;
-	
+
 	-- Create a new blob thumbnail with the new image id
 	create_blob_thumbnail(l_image_id);
 END;
