@@ -18,16 +18,18 @@ CREATE TABLE stores
 	description VARCHAR2(4000)
 				CONSTRAINT sotres_description_nn
 					NOT NULL,
-	postcode	VARCHAR2(10)
+	postcode	VARCHAR2(10)					
 				CONSTRAINT stores_postcode_nn
 					NOT NULL,
 				CONSTRAINT stores_postcode_chk
 					CHECK(REGEXP_LIKE(postcode,
 							'([A-PR-UWYZ0-9][A-HK-Y0-9][AEHMNPRTVXY0-9]?[ABEHMNPRVWXY0-9]{1,2}[0-9][ABD-HJLN-UW-Z]{2}|GIR 0AA)'
-					))			
+					)),
+	location    MDSYS.SDO_GEOMETRY 			
 );
 
-CREATE INDEX stores_desc_ctx_idx ON stores(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX stores_desc_ctx_idx  ON stores(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX stores_location_idx  ON stores(location)    INDEXTYPE IS MDSYS.SPATIAL_INDEX;
 
 CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1;
 
@@ -40,14 +42,16 @@ BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
 			INTO   :NEW.store_id
 			FROM   sys.dual;
 		END IF;
-
-		-- Provide any formatting (always remove leading/trailing whitespace)
-		:NEW.name        := TRIM(INITCAP(:NEW.name));
-		:NEW.description := TRIM(:NEW.description);
-		:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
-		:NEW.postcode    := TRIM(UPPER(:NEW.postcode));
-
 	END IF;
+
+	-- Provide any formatting (always remove leading/trailing whitespace)
+	:NEW.name        := TRIM(INITCAP(:NEW.name));
+	:NEW.description := TRIM(:NEW.description);
+	:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
+	:NEW.postcode    := TRIM(REPLACE(UPPER(:NEW.postcode), ' ', ''));
+
+	-- Assign the geometry object to put this store on the map!
+	:NEW.location    := set_spatial_point(:NEW.postcode);
 END;
 
 /*-----------------------------------------------------------------
@@ -371,9 +375,6 @@ CREATE TABLE store_images
 					PRIMARY KEY
 				CONSTRAINT store_images_image_id_nn
 					NOT NULL,
-	store_id    NUMBER(11)
-				CONSTRAINT store_imagesstored_id_fk
-					REFERENCES stores(store_id) ON DELETE SET NULL,
 	game_id		NUMBER(11)
 				CONSTRAINT store_images_game_id_fk
 					REFERENCES games(game_id) ON DELETE SET NULL,
@@ -499,6 +500,55 @@ BEGIN
 END get_default_image;
 
 /*-----------------------------------------------------------------
+					SET SPATIAL DATA POINT
+-------------------------------------------------------------------
+ Returns a spatial object from the given postcode, using the GM API,
+ this will return only a long/lat POINT as we are adding it to the
+ map, instead of querying surrounding points
+
+ ** DEV NOTES ON GTYPE **
+ -------------------------------------------------------------------
+ --  D = 2D, 3D or 4D 
+ --  L = Linear reference for 3/4D objects (0 for 2D)
+ -- TT = geom type 00 - 09 where 00 = unknown, 01 = 1 point, 02 = line/curve, 03 = polygon/surface, 04 = collection, 05 = multipoint, 06 = multiline/multicurve, 07 = multipolygon or multisurface, 08 = solid, 09 = multisolid
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION set_spatial_point
+(
+	p_postcode stores.postcode%TYPE
+)
+	RETURN MDSYS.SDO_GEOMETRY
+IS
+	-- Build local variables
+	l_lng      VARCHAR2(100);
+	l_lat	   VARCHAR2(100);
+	n_spatial_object MDSYS.SDO_GEOMETRY;
+BEGIN
+	-- Use Brians procedure to populate long and lat parameters
+	brian.POSTCODE_TO_LAT_LNG_GM_API(p_postcode, l_lat, l_lng);
+
+	-- Populate the new spatial object
+	n_spatial_object := MDSYS.SDO_GEOMETRY
+	(
+		-- use 01 as we wish to add the point to the map
+		2001, 
+		-- SRID for WGS84 longitutde/latitude format
+		8307,
+		-- Set the information of the point ( we don't need a Z co-ord )
+		SDO_POINT_TYPE
+		(
+			l_lng,
+			l_lat,
+			null
+		),
+		null,	-- We have no SDO_ELEM_INFO_ARRAY
+		null 	-- We have no SDO_ORDINATE_ARRAY
+	);
+
+	-- Return the new spatial object
+	RETURN n_spatial_object;
+END set_spatial_point;
+
+/*-----------------------------------------------------------------
 					 CREATE IMAGE FROM FILE
 -------------------------------------------------------------------
  Load the contents of uploaded BLOB images from a filename
@@ -507,7 +557,6 @@ CREATE OR REPLACE PROCEDURE create_image_from_file
 (
 	p_filename	 IN VARCHAR2,
 	p_priority   IN VARCHAR2,
-	p_store_id   stores.store_id%TYPE,
 	p_console_id consoles.console_id%TYPE,
 	p_game_id    games.game_id%TYPE
 )
@@ -516,14 +565,9 @@ AS
 	l_image 	ORDSYS.ORDImage;
 	ctx 		RAW(4000);
 BEGIN
-	-- Get the next image_id value, use this for creating thumbnail and INSERT statement
-	l_image_id = seq_store_image_id.nextval
-
-	-- Prepare the insert statement
 	INSERT INTO store_images
 	(
 		image_id,
-		store_id,
 		game_id,
 		console_id,
 		filename,
@@ -532,8 +576,7 @@ BEGIN
 	)
 	VALUES 
 	(
-		l_image_id, 
-		p_store_id,
+		seq_store_image_id.nextval, 
 		p_game_id,
 		p_console_id,
 		p_filename,
@@ -545,10 +588,6 @@ BEGIN
 			p_filename
 		)
 	);
-
-	-- Create a thumbnail for the given image and COMMIT changes to the db.
-	create_blob_thumbnail(l_image_id)
-
 	COMMIT;
 END;
 
