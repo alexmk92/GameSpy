@@ -153,7 +153,7 @@ BEFORE INSERT OR UPDATE ON items FOR EACH ROW
 	-- Set the image for the item
 	create_image_from_file(
 			get_item_name(:NEW.game_id, :NEW.console_id) || '_image',
-			'COVER',
+			'OTHER',
 			:NEW.store_id,
 			:NEW.console_id,
 			:NEW.game_id
@@ -219,12 +219,21 @@ BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
 			INTO   :NEW.console_id
 			FROM   sys.dual;
 		END IF;
-
-		-- Get the default image if one isn't set
-		IF :NEW.cover_image IS NULL THEN
-			:NEW.cover_image := get_default_image();
-		END IF;
 	END IF;
+
+	-- Get the default image if one isn't set
+	IF :NEW.cover_image IS NULL THEN
+		:NEW.cover_image := get_default_image();
+	ELSE
+		-- Create a new image for this item
+		create_image_from_file(
+			:NEW.name || '_cover_image',
+			'COVER',
+			null,
+			:NEW.console_id,
+			null
+		)
+	ENDIF;
 END;
 
 /*-----------------------------------------------------------------
@@ -364,12 +373,21 @@ BEFORE INSERT OR UPDATE ON games FOR EACH ROW
 			INTO   :NEW.game_id
 			FROM   sys.dual;
 		END IF;
-
-		-- Get the default image from the store_images table
-		IF :NEW.cover_image IS NULL THEN
-			:NEW.cover_image := get_default_image();
-		END IF;
 	END IF;
+
+	-- Get the default image if one isn't set
+	IF :NEW.cover_image IS NULL THEN
+		:NEW.cover_image := get_default_image();
+	ELSE
+		-- Create a new image for this item
+		create_image_from_file(
+			:NEW.name || '_cover_image',
+			'COVER',
+			null,
+			null,
+			:NEW.game_id
+		)
+	ENDIF;
 END;
 
 /*-----------------------------------------------------------------
