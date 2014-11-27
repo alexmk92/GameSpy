@@ -155,8 +155,8 @@ BEFORE INSERT OR UPDATE ON items FOR EACH ROW
 			get_item_name(:NEW.game_id, :NEW.console_id) || '_image',
 			'COVER',
 			:NEW.store_id,
-			null,
-			null
+			:NEW.console_id,
+			:NEW.game_id
 	);
 END;
 
@@ -511,23 +511,45 @@ IS
 	this_game		STRING(70);
 	this_console    STRING(70);
 BEGIN
+
+	-- We have a game with a specified platform, return the formatted string
+	IF ((this_game IS NOT NULL) AND (this_console IS NOT NULL)) THEN
+		SELECT games.name
+		INTO   this_game
+		FROM   games
+		WHERE  games.game_id = this_game
+
+		SELECT consoles.name
+		INTO   this_console
+		FROM   consoles
+		WHERE  consoles.console_id = this_console
+
+		-- Return a formatted game string with its associated platform
+		RETURN this_game || '_' || this_console
+
 	-- Check we have been given a console
-	IF this_console IS NOT NULL THEN
+	ELSIFIF this_console IS NOT NULL THEN
 		SELECT  consoles.name
-		INTO 	this_name
+		INTO 	this_console
 		FROM 	consoles
 		WHERE   consoles.console_id = this_console;
+
+		-- Return a console string
+		RETURN this_console;
+
 	-- If a console wasn't specified then check for a game, games are specified by a GAME or GAME and CONSOLE
 	ELSIF (this_game IS NOT NULL) THEN
 		SELECT	games.name
-		INTO 	this_name
+		INTO 	this_game
 		FROM    games
 		WHERE   games.game_id = this_game;
-	ELSIF ((this_game IS NOT NULL) AND (this_console IS NOT NULL)) THEN
+
+		-- Return a game string
+		RETURN this_game;
 	END IF;
 
-	-- Return the product description
-	RETURN this_name;
+	-- Return a blank string if all fall through (there was an error)
+	RETURN '';
 END get_item_name;
 
 /*-----------------------------------------------------------------
