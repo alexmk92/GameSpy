@@ -508,7 +508,8 @@ CREATE OR REPLACE FUNCTION get_item_name
 )
 	RETURN STRING
 IS
-	this_name		STRING(5000);
+	this_game		STRING(70);
+	this_console    STRING(70);
 BEGIN
 	-- Check we have been given a console
 	IF this_console IS NOT NULL THEN
@@ -517,11 +518,12 @@ BEGIN
 		FROM 	consoles
 		WHERE   consoles.console_id = this_console;
 	-- If a console wasn't specified then check for a game, games are specified by a GAME or GAME and CONSOLE
-	ELSIF (this_game IS NOT NULL) OR ((this_game IS NOT NULL) AND (this_console IS NOT NULL)) THEN
+	ELSIF (this_game IS NOT NULL) THEN
 		SELECT	games.name
 		INTO 	this_name
 		FROM    games
 		WHERE   games.game_id = this_game;
+	ELSIF ((this_game IS NOT NULL) AND (this_console IS NOT NULL)) THEN
 	END IF;
 
 	-- Return the product description
