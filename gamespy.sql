@@ -375,6 +375,9 @@ CREATE TABLE store_images
 					PRIMARY KEY
 				CONSTRAINT store_images_image_id_nn
 					NOT NULL,
+	store_id    NUMBER(11)
+				CONSTRAINT store_images_store_id_fk
+					REFERENCES stores(store_id) ON DELETE SET NULL,
 	game_id		NUMBER(11)
 				CONSTRAINT store_images_game_id_fk
 					REFERENCES games(game_id) ON DELETE SET NULL,
@@ -557,6 +560,7 @@ CREATE OR REPLACE PROCEDURE create_image_from_file
 (
 	p_filename	 IN VARCHAR2,
 	p_priority   IN VARCHAR2,
+	p_store_id   stores.store_id%TYPE,
 	p_console_id consoles.console_id%TYPE,
 	p_game_id    games.game_id%TYPE
 )
@@ -565,9 +569,14 @@ AS
 	l_image 	ORDSYS.ORDImage;
 	ctx 		RAW(4000);
 BEGIN
+	-- Set the image id
+	l_image_id = seq_store_image_id.nextval
+
+	-- Insert the new values
 	INSERT INTO store_images
 	(
 		image_id,
+		store_id,
 		game_id,
 		console_id,
 		filename,
@@ -576,7 +585,8 @@ BEGIN
 	)
 	VALUES 
 	(
-		seq_store_image_id.nextval, 
+		l_image_id, 
+		p_store_id,
 		p_game_id,
 		p_console_id,
 		p_filename,
@@ -589,6 +599,9 @@ BEGIN
 		)
 	);
 	COMMIT;
+	
+	-- Create a new blob thumbnail with the new image id
+	create_blob_thumbnail(l_image_id);
 END;
 
 /*-----------------------------------------------------------------
