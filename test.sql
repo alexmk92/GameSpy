@@ -1,15 +1,47 @@
--- Any test blocks for running PLSQL in SQLDEV go here
-
-
--- Test set_spatial_point function works
-DECLARE
-  my_object    MDSYS.SDO_GEOMETRY;  
-  postcode     VARCHAR2(10);
+CREATE OR REPLACE PROCEDURE create_image_from_file
+(
+	p_filename	 IN VARCHAR2,
+	p_priority   IN VARCHAR2,
+	p_store_id   stores.store_id%TYPE,
+	p_console_id consoles.console_id%TYPE,
+	p_game_id    games.game_id%TYPE
+)
+AS 
+	l_image_id	INTEGER;
+	l_image 	ORDSYS.ORDImage;
+	ctx 		RAW(4000);
 BEGIN
-  postcode := 'PL48AA';
-  my_object := set_spatial_point(postcode);
-  dbms_output.put_line('Results for ' || postcode || '.');
-  dbms_output.put_line('sdo_x = '||my_object.sdo_point.x);
-  dbms_output.put_line('sdo_y = '||my_object.sdo_point.y);
-  dbms_output.put_line('sdo_z = '||my_object.sdo_point.z);
+	-- Set the image id
+	l_image_id := seq_store_image_id.nextval;
+
+	-- Insert the new values
+	INSERT INTO store_images
+	(
+		image_id,
+		store_id,
+		game_id,
+		console_id,
+		filename,
+		priority,
+		image
+	)
+	VALUES 
+	(
+		l_image_id, 
+		p_store_id,
+		p_game_id,
+		p_console_id,
+		p_filename,
+		p_priority,
+		ORDSYS.ORDImage
+		(
+			'FILE',
+			'ISAD330_IMAGES',
+			p_filename
+		)
+	);
+	COMMIT;
+
+	-- Create a new blob thumbnail with the new image id
+	create_blob_thumbnail(l_image_id);
 END;

@@ -25,7 +25,8 @@ CREATE TABLE stores
 					CHECK(REGEXP_LIKE(postcode,
 							'([A-PR-UWYZ0-9][A-HK-Y0-9][AEHMNPRTVXY0-9]?[ABEHMNPRVWXY0-9]{1,2}[0-9][ABD-HJLN-UW-Z]{2}|GIR 0AA)'
 					)),
-	location    MDSYS.SDO_GEOMETRY 			
+	location    MDSYS.SDO_GEOMETRY,
+	thumbnail   BLOB		
 );
 
 CREATE INDEX stores_desc_ctx_idx  ON stores(description) INDEXTYPE IS ctxsys.context;
@@ -179,7 +180,8 @@ CREATE TABLE  consoles
 	description VARCHAR2(4000)
 				CONSTRAINT consoles_description_nn
 					NOT NULL,
-	tags		VARCHAR2(500)
+	tags		VARCHAR2(500),
+	thumbnail   BLOB
 );
 
 CREATE INDEX consoles_desc_ctx_idx ON consoles(description) INDEXTYPE IS ctxsys.context;
@@ -312,7 +314,8 @@ CREATE TABLE games
 					CHECK(REGEXP_LIKE(rr_price,
 								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
 					)),
-	tags        VARCHAR2(500)		
+	tags        VARCHAR2(500),
+	thumbnail   BLOB	
 );
 
 CREATE INDEX games_desc_ctx_idx      ON games(description) INDEXTYPE IS ctxsys.context;

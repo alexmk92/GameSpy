@@ -432,24 +432,25 @@ BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
 			FROM   sys.dual;
 		END IF;
 	END IF;
+	IF INSERTING OR UPDATING THEN
+		-- Provide any formatting (always remove leading/trailing whitespace)
+		:NEW.name        := TRIM(INITCAP(:NEW.name));
+		:NEW.description := TRIM(:NEW.description);
+		:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
+		:NEW.postcode    := TRIM(REPLACE(UPPER(:NEW.postcode), ' ', ''));
 
-	-- Provide any formatting (always remove leading/trailing whitespace)
-	:NEW.name        := TRIM(INITCAP(:NEW.name));
-	:NEW.description := TRIM(:NEW.description);
-	:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
-	:NEW.postcode    := TRIM(REPLACE(UPPER(:NEW.postcode), ' ', ''));
+		-- Assign the geometry object to put this store on the map!
+		:NEW.location    := set_spatial_point(:NEW.postcode);
 
-	-- Assign the geometry object to put this store on the map!
-	:NEW.location    := set_spatial_point(:NEW.postcode);
-
-	-- Set the image for the store
-	create_image_from_file(
-			:NEW.name || '_image',
-			'COVER',
-			:NEW.store_id,
-			null,
-			null
-	);
+		-- Set the image for the store
+		create_image_from_file(
+				:NEW.name || '_image',
+				'COVER',
+				:NEW.store_id,
+				null,
+				null
+		);
+	END IF;
 END
 /
 CREATE OR REPLACE TRIGGER trg_items_before
