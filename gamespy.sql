@@ -826,3 +826,49 @@ BEGIN
     END IF;
 RETURN l_query;
 END;
+
+-- Store query
+DECLARE
+
+  l_query VARCHAR2(4000);
+
+BEGIN
+
+	-- Assign values to the base query object
+	l_query :=
+        'SELECT 
+         	stores.store_id,
+         	stores.name,
+         	stores.description,
+         	stores.postcode,
+         	COUNT(items.quantity) AS total_stock
+         FROM items
+         LEFT JOIN stores 
+         ON stores.store_id = items.store_id
+         ';
+        
+    -- Append to the query, only if we have a valid search string, else return
+    -- all games in the table.
+    IF :P1_REPORT_SEARCH IS NOT NULL THEN
+        l_query := l_query || ' ' || q'{
+               WHERE
+               (
+                   CONTAINS(description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 
+               ) 		 
+			   GROUP BY 
+	 				stores.store_id, 
+	 				stores.name, 
+	 				stores.description, 
+	 				stores.postcode
+	 		   }';
+    ELSE
+          l_query := l_query || ' ' || q'{
+         	    GROUP BY 
+	 				stores.store_id, 
+	 				stores.name, 
+	 				stores.description, 
+	 				stores.postcode
+	 		   }'; 
+    END IF;
+RETURN l_query;
+END;
