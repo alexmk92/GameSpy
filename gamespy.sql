@@ -157,6 +157,9 @@ CREATE TABLE  consoles
 					PRIMARY KEY
 				CONSTRAINT consoles_console_id_nn
 					NOT NULL,
+	prod_code   VARCHAR2(5)
+				CONSTRAINT consoles_prod_code_nn
+					NOT NULL,
 	manufac     NUMBER(5) 
 				CONSTRAINT consoles_manufac_fk
 					REFERENCES manufacturers(manufac_id) ON DELETE SET NULL
@@ -194,6 +197,9 @@ BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
 			SELECT seq_console_id.nextval
 			INTO   :NEW.console_id
 			FROM   sys.dual;
+		END IF;
+		IF :NEW.prod_code IS NULL THEN 
+			:NEW.prod_code := generate_product_code()
 		END IF;
 	END IF;
 END;
@@ -276,6 +282,9 @@ CREATE TABLE games
 					PRIMARY KEY
 				CONSTRAINT games_id_nn
 					NOT NULL,
+	prod_code   VARCHAR2(5)
+			CONSTRAINT games_prod_code_nn
+				NOT NULL,
 	publisher   NUMBER(5)
 				CONSTRAINT games_publisher_fk
 					REFERENCES publishers(publish_id)
@@ -327,6 +336,9 @@ BEFORE INSERT OR UPDATE ON games FOR EACH ROW
 			SELECT seq_games_id.nextval
 			INTO   :NEW.game_id
 			FROM   sys.dual;
+		END IF;
+		IF :NEW.prod_code IS NULL THEN 
+			:NEW.prod_code := generate_product_code()
 		END IF;
 	END IF;
 END;
@@ -389,6 +401,26 @@ BEFORE INSERT OR UPDATE ON store_images FOR EACH ROW
 		END IF;
 	END IF;
 END;
+
+/*-----------------------------------------------------------------
+					CREATE PRODUCT CODE
+-------------------------------------------------------------------
+ Generates and returns a new product code
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION generate_product_code
+()
+	RETURN STRING
+IS 
+	new_code	STRING(10);
+BEGIN
+	-- Get the new code
+	SELECT DBMS_RANDOM.STRING('X', 10)
+	INTO   new_code
+	FROM   sys.dual;
+
+	-- Return the new code
+	RETURN new_code
+END generate_product_code;
 
 
 /*-----------------------------------------------------------------
