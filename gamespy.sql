@@ -157,7 +157,7 @@ CREATE TABLE  consoles
 					PRIMARY KEY
 				CONSTRAINT consoles_console_id_nn
 					NOT NULL,
-	prod_code   VARCHAR2(5)
+	prod_code   VARCHAR2(10)
 				CONSTRAINT consoles_prod_code_nn
 					NOT NULL,
 	manufac     NUMBER(5) 
@@ -199,7 +199,7 @@ BEFORE INSERT OR UPDATE ON consoles FOR EACH ROW
 			FROM   sys.dual;
 		END IF;
 		IF :NEW.prod_code IS NULL THEN 
-			:NEW.prod_code := generate_product_code()
+			:NEW.prod_code := generate_product_code();
 		END IF;
 	END IF;
 END;
@@ -282,7 +282,7 @@ CREATE TABLE games
 					PRIMARY KEY
 				CONSTRAINT games_id_nn
 					NOT NULL,
-	prod_code   VARCHAR2(5)
+	prod_code   VARCHAR2(10)
 			CONSTRAINT games_prod_code_nn
 				NOT NULL,
 	publisher   NUMBER(5)
@@ -307,7 +307,7 @@ CREATE TABLE games
 					)
 				CONSTRAINT games_category_nn
 					NOT NULL,
-	title		VARCHAR2(100)
+	title		VARCHAR2(200)
 				CONSTRAINT games_title_nn
 					NOT NULL,
 	release     DATE
@@ -321,10 +321,13 @@ CREATE TABLE games
 					CHECK(REGEXP_LIKE(rr_price,
 								'([0-9]{0,10})(\.[0-9]{2})?$|^-?(100)(\.[0]{1,2})'
 					)),
-	tags        VARCHAR2(500)	
+	tags        VARCHAR2(500), 
+	rating		VARCHAR2(4)
+				CONSTRAINT games_rating_nn
+					NOT NULL
 );
 
-CREATE INDEX games_desc_ctx_idx      ON games(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX games_desc_ctx_idx ON games(description) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
@@ -338,8 +341,15 @@ BEFORE INSERT OR UPDATE ON games FOR EACH ROW
 			FROM   sys.dual;
 		END IF;
 		IF :NEW.prod_code IS NULL THEN 
-			:NEW.prod_code := generate_product_code()
+			:NEW.prod_code := generate_product_code();
 		END IF;
+	END IF;
+
+	-- Check for a valid rating
+	IF :NEW.rating IS NULL THEN 
+		:NEW.rating := '0.0';
+	ELSE
+		:NEW.rating := check_valid_rating(:NEW.rating);
 	END IF;
 END;
 
@@ -408,7 +418,6 @@ END;
  Generates and returns a new product code
 -------------------------------------------------------------------*/
 CREATE OR REPLACE FUNCTION generate_product_code
-()
 	RETURN STRING
 IS 
 	new_code	STRING(10);
@@ -419,7 +428,7 @@ BEGIN
 	FROM   sys.dual;
 
 	-- Return the new code
-	RETURN new_code
+	RETURN new_code;
 END generate_product_code;
 
 
@@ -612,6 +621,33 @@ BEGIN
 	-- Return the new spatial object
 	RETURN n_spatial_object;
 END set_spatial_point;
+
+/*-----------------------------------------------------------------
+					 CHECK NUMBER METHOD
+-------------------------------------------------------------------
+ Upload a new file to the database
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION check_valid_rating
+(
+	p_rating games.rating%TYPE
+)
+	RETURN VARCHAR2
+IS
+	l_rating	VARCHAR2(4);
+BEGIN
+	-- Default return string
+	l_rating := '0.0';
+
+	-- Check for a match and return the input string if correct
+	IF REGEXP_LIKE(p_rating, '^([0-9]{1})(\.[0-9]{0,1})?$') THEN
+	  l_rating := p_rating;
+	  RETURN l_rating;
+	-- Return default
+	ELSE 
+	  RETURN l_rating;
+	END IF;
+
+END check_valid_rating;
 
 
 /*-----------------------------------------------------------------
