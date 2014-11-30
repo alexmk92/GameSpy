@@ -29,6 +29,7 @@ CREATE TABLE stores
 );
 
 CREATE INDEX stores_desc_ctx_idx  ON stores(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX stores_name_ctx_idx  ON stores(name) INDEXTYPE IS ctxsys.context;
 CREATE INDEX stores_location_idx  ON stores(location)    INDEXTYPE IS MDSYS.SPATIAL_INDEX;
 
 CREATE SEQUENCE seq_store_id START WITH 1 INCREMENT BY 1 NOCACHE;
@@ -84,13 +85,16 @@ CREATE TABLE items
 					PRIMARY KEY
 				CONSTRAINT items_item_id_nn
 					NOT NULL,
-	store_id    CONSTRAINT items_store_id_fk
+	store_id    NUMBER(5)
+				CONSTRAINT items_store_id_fk
 					REFERENCES stores(store_id)
 				CONSTRAINT items_store_id_nn
 					NOT NULL,
-	game_id     CONSTRAINT items_game_id_fk
+	game_id     NUMBER(5)
+				CONSTRAINT items_game_id_fk
 					REFERENCES games(game_id) ON DELETE SET NULL,
-	console_id  CONSTRAINT items_console_id_fk
+	console_id 	NUMBER(5)
+				CONSTRAINT items_console_id_fk
 					REFERENCES consoles(console_id) ON DELETE SET NULL,
 	store_desc  VARCHAR2(4000),
 	store_price VARCHAR2(10) DEFAULT '0.00'
