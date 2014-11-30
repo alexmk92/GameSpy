@@ -186,6 +186,8 @@ CREATE TABLE  consoles
 );
 
 CREATE INDEX consoles_desc_ctx_idx ON consoles(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX consoles_name_ctx_idx ON consoles(name) INDEXTYPE IS ctxsys.context;
+CREATE INDEX consoles_tags_ctx_idx ON consoles(tags) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_console_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
@@ -328,6 +330,8 @@ CREATE TABLE games
 );
 
 CREATE INDEX games_desc_ctx_idx ON games(description) INDEXTYPE IS ctxsys.context;
+CREATE INDEX games_title_ctx_idx ON games(title) INDEXTYPE IS ctxsys.context;
+CREATE INDEX games_tags_ctx_idx ON games(tags) INDEXTYPE IS ctxsys.context;
 
 CREATE SEQUENCE seq_games_id START WITH 1 INCREMENT BY 1 NOCACHE;
 
@@ -344,6 +348,9 @@ BEFORE INSERT OR UPDATE ON games FOR EACH ROW
 			:NEW.prod_code := generate_product_code();
 		END IF;
 	END IF;
+
+	-- Format the category
+	:NEW.category := TRIM(UPPER(:NEW.category));
 
 	-- Check for a valid rating
 	IF :NEW.rating IS NULL THEN 
@@ -623,6 +630,39 @@ BEGIN
 END set_spatial_point;
 
 /*-----------------------------------------------------------------
+					 GET USERS LOCATION
+-------------------------------------------------------------------
+ Returns the users location, we can then do proximity searching and
+ all other types of searching
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION get_my_location
+(
+	p_postcode       VARCHAR2
+) 
+	RETURN MDSYS.SDO_POINT_TYPE
+IS
+	-- Local variables
+	l_lng 	          VARCHAR2(100);
+	l_lat	          VARCHAR2(100);
+	r_my_location     MDSYS.SDO_POINT_TYPE;
+BEGIN
+	-- Use Brians procedure to populate long and lat parameters
+	brian.POSTCODE_TO_LAT_LNG_GM_API(p_postcode, l_lat, l_lng);
+
+	-- Populate the return object
+	IF l_lat IS NOT NULL AND l_lng IS NOT NULL THEN
+		r_my_location := MDSYS.SDO_POINT_TYPE(l_lng, l_lat, null);
+	ELSE
+		-- Invalid postcode, return a null point
+		r_my_location := MDSYS.SDO_POINT_TYPE(0, 0, null);
+	END IF;
+
+	-- Return the location object
+	RETURN r_my_location;
+END get_my_location;
+
+
+/*-----------------------------------------------------------------
 					 CHECK NUMBER METHOD
 -------------------------------------------------------------------
  Upload a new file to the database
@@ -872,3 +912,23 @@ BEGIN
     END IF;
 RETURN l_query;
 END;
+
+-- Spatial Index Metadata
+INSERT INTO user_sdo_geom_metadata
+(
+	table_name,
+	column_name,
+	diminfo,
+	SRID
+) 
+VALUES
+(
+	'STORES',
+	'LOCATION',
+	SDO_DIM_ARRAY
+	(
+		SDO_DIM_ELEMENT('Longitude', -180, 180, 1),
+		SDO_DIM_ELEMENT('Latitude', -90, 90, 1)
+	),
+	8307
+);
