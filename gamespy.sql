@@ -769,11 +769,11 @@ BEGIN
 	DELETE FROM apex_application_files
 	WHERE name = p_filename;
 
-	-- Release lock and commit changes.
-	COMMIT;
-
 	-- Create thumbnail
 	create_blob_thumbnail(l_image_id);
+
+	-- Release lock and commit changes.
+	COMMIT;
 
 	-- Exception handler for locks
 	EXCEPTION 
