@@ -665,6 +665,50 @@ BEGIN
 	RETURN r_my_location;
 END get_my_location;
 
+/*-----------------------------------------------------------------
+					   GET AVERAGE COLOR
+-------------------------------------------------------------------
+ Returns the average color of an image
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION get_average_color_score
+(
+	--p_input_color		ORDSYS.SI_Color,
+	p_red               NUMBER,
+	p_green             NUMBER,
+	p_blue              NUMBER,
+	p_input_image		store_images.game_id%TYPE
+) 
+	RETURN DOUBLE PRECISION
+IS
+	-- Local variables
+	l_average_color		ORDSYS.SI_AverageColor;	
+	l_image_to_eval		ORDSYS.SI_StillImage;
+	l_input_color       ORDSYS.SI_Color;
+	l_blob_reference 	BLOB;
+
+	-- Determines how well the image matches the given color (%)
+	r_avg_score			DOUBLE PRECISION;
+BEGIN
+	-- select the thumbnail into the BLOB data column
+	SELECT thumbnail 
+	INTO   l_blob_reference
+	FROM   store_images
+	WHERE  image_id = p_input_image;
+
+	-- Build the SI_Color Object
+	l_input_color := SI_Color(p_red, p_green, p_blue);
+
+	-- Create the SI_StillImage to evaluate 
+	l_image_to_eval := new SI_StillImage(l_blob_reference);
+
+	-- Get the average color score %
+	l_average_color := NEW SI_AverageColor(l_input_color);
+	r_avg_score := SI_ScoreByAvgClr(l_average_color, l_image_to_eval);
+
+	-- Return the % score
+	RETURN r_avg_score;
+END get_average_color_score;
+
 
 /*-----------------------------------------------------------------
 					 CHECK NUMBER METHOD
