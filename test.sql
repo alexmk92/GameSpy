@@ -1,88 +1,82 @@
-<script type="text/javascript" src="http://maps.googleapis.com/maps/api/js?sensor=true">
-</script>
-<script type="text/javascript">
+DECLARE
 
-var geocoder;
-var map;
+  l_query  VARCHAR2(4000);
 
-// Create our base map object 
-function initialize()
-{
-   geocoder = new google.maps.Geocoder();
-   var latlng = new google.maps.LatLng(0,0);
-   var mapOptions = { 
-      zoom: 12,
-      center: latlng,
-      mapTypeId: google.maps.MapTypeId.ROADMAP
-   }
-   map = new google.maps.Map(document.getElementById("map"), mapOptions);
-}
+BEGIN
 
-// Add the users point to the map
-function addAddress() {
+	-- Assign values to the base query object
+	l_query :=
+        'SELECT DISTINCT
+	        stores.store_id,
+	        stores.name,
+	        stores.description,
+	        stores.postcode,
+	        dbms_lob.getlength(store_images.thumbnail) AS thumbnail
+		FROM stores
+		LEFT JOIN store_images 
+			ON stores.store_id = store_images.store_id
+		JOIN items 
+			ON stores.store_id = items.store_id
+		JOIN games 
+			ON items.game_id = games.game_id
+		JOIN consoles
+			ON items.console_id = consoles.console_id
+         ';
+        
+    -- Append to the query, only if we have a valid search string, else return
+    -- all games in the table.
+    IF :P1_REPORT_SEARCH IS NOT NULL THEN
+        l_query := l_query || ' ' || q'{
+               WHERE
+               ( 
+                    CONTAINS(stores.description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+                    CONTAINS(stores.name, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+                    CONTAINS(consoles.name, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	          		CONTAINS(consoles.tags, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	          		CONTAINS(games.tags, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
+	          		CONTAINS(games.title, '$}'||:P1_REPORT_SEARCH||q'{') > 0 
+               )}';
+				IF :P1_LOCATION IS NOT NULL THEN
+					l_query := l_query || ' ' || q'{
+						AND SDO_WITHIN_DISTANCE 
+						(
+							stores.location,
+							SDO_GEOMETRY
+							(
+								2001,
+								8307,
+								get_my_location(:P1_LOCATION),
+								null,
+								null
+							),
+							'distance=&P1_RADIUS. unit=mile'
+						) = 'TRUE'
+						AND store_images.priority = 'COVER'
+						}';
+				END IF;
+    ELSIF :P1_RADIUS IS NOT NULL AND :P1_LOCATION IS NOT NULL THEN
+          l_query := l_query || ' ' || q'{
+          		WHERE SDO_WITHIN_DISTANCE
+          		(
+          			stores.location,
+					SDO_GEOMETRY
+					(
+						2001,
+						8307,
+						get_my_location(:P1_LOCATION),
+						null,
+						null
+					),
+					'distance=&P1_RADIUS. unit=mile'
+          		) = 'TRUE'
+         		AND store_images.priority = 'COVER'
+         	}'; 
+    ELSE
+    	   l_query := l_query || ' ' || q'{
+    	   		WHERE ( store_images.priority = 'COVER' )
+    	   }';
+    END IF;
 
-	// Get the users current location
-	var location      = document.getElementById("P1_LOCATION").value;  // Users postcode
-	var radius_size   = document.getElementById("P1_RADIUS").value;    // Users radius size in miles
-	var search_radius;
 
-	// Translate the users location onto the map
-	geocoder.geocode({ 'address': location}, function(results, status) {
-	   if(status == google.maps.GeocoderStatus.OK) {
-
-	   	   // Center around the users location
-	       map.setCenter(results[0].geometry.location);
-
-	       // Place a marker where the user is situated
-	       var marker = new google.maps.Marker({
-	            map:map,
-	            position: results[0].geometry.location
-	       });
-
-	        // configure the radius
-	       	// Construct the radius circle
-			search_radius = new google.maps.Circle({
-				 center:location,
-				 radius:20000,
-				 strokeColor:"#0000FF",
-				 strokeOpacity:0.8,
-				 strokeWeight:2,
-				 fillColor:"#0000FF",
-				 fillOpacity:0.4
-			});
-
-
-	       // add the store points to the map
-           addStores();
-	   } 
-	});
-}
-
-// Add each store to the map
-function addStores() {
- 	
- 	// Get a reference to our results
- 	var stores_table = document.getElementsByClassName("uReport");
- 	var store_rows   = stores_table[0].tBodies[0].rows;
- 	// Get the total number of rows we found in our result list
-	var num_stores = store_rows.length;
-
-	// Loop over the rows and get their post code, adding the address to the map each time
-	for (i = 0; i < num_stores; i++) 
-	{
-		var location = store_rows[i].childNodes[3].textContent;
-		
-		// Translate the stores location onto the map
-		geocoder.geocode({ 'address': location}, function(results, status) {
-		   if(status == google.maps.GeocoderStatus.OK) {
-		       var marker = new google.maps.Marker({
-		            map:map,
-		            position: results[0].geometry.location,
-		       });
-		       marker.setIcon('http://maps.google.com/mapfiles/ms/icons/blue-dot.png')
-		   } 
-		});
-	}
-}
-
-</script>
+	RETURN l_query;
+END;

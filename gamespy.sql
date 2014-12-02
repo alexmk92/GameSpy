@@ -676,7 +676,7 @@ CREATE OR REPLACE FUNCTION get_average_color_score
 	p_red               NUMBER,
 	p_green             NUMBER,
 	p_blue              NUMBER,
-	p_input_image		store_images.game_id%TYPE
+	p_input_image		store_images.image_id%TYPE
 ) 
 	RETURN DOUBLE PRECISION
 IS
