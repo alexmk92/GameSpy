@@ -47,7 +47,7 @@ BEFORE INSERT OR UPDATE ON stores FOR EACH ROW
 		-- Provide any formatting (always remove leading/trailing whitespace)
 		:NEW.name        := TRIM(INITCAP(:NEW.name));
 		:NEW.description := TRIM(:NEW.description);
-		:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , '');
+		:NEW.postcode    := REPLACE(:NEW.postcode, ' ' , ''); 
 		:NEW.postcode    := TRIM(REPLACE(UPPER(:NEW.postcode), ' ', ''));
 
 		-- Assign the geometry object to put this store on the map!
@@ -672,10 +672,7 @@ END get_my_location;
 -------------------------------------------------------------------*/
 CREATE OR REPLACE FUNCTION get_average_color_score
 (
-	--p_input_color		ORDSYS.SI_Color,
-	p_red               NUMBER,
-	p_green             NUMBER,
-	p_blue              NUMBER,
+	p_input_color		VARCHAR2,
 	p_input_image		store_images.image_id%TYPE
 ) 
 	RETURN DOUBLE PRECISION
@@ -685,10 +682,22 @@ IS
 	l_image_to_eval		ORDSYS.SI_StillImage;
 	l_input_color       ORDSYS.SI_Color;
 	l_blob_reference 	BLOB;
+	l_hex_color         VARCHAR2(6);
+	l_red				NUMBER;
+	l_green				NUMBER;
+	l_blue              NUMBER;
 
 	-- Determines how well the image matches the given color (%)
 	r_avg_score			DOUBLE PRECISION;
 BEGIN
+    -- Strip the # from the input color
+    l_hex_color := TRIM(REPLACE(p_input_color, '#', ''));
+
+	-- Convert the hex value to RGB
+	SELECT TO_NUMBER(substr(l_hex_color, 1, 2), 'XX') INTO l_red   FROM SYS.DUAL;
+	SELECT TO_NUMBER(substr(l_hex_color, 3, 2), 'XX') INTO l_green FROM SYS.DUAL;
+	SELECT TO_NUMBER(substr(l_hex_color, 5, 2), 'XX') INTO l_blue  FROM SYS.DUAL;
+
 	-- select the thumbnail into the BLOB data column
 	SELECT thumbnail 
 	INTO   l_blob_reference
@@ -696,7 +705,7 @@ BEGIN
 	WHERE  image_id = p_input_image;
 
 	-- Build the SI_Color Object
-	l_input_color := SI_Color(p_red, p_green, p_blue);
+	l_input_color := SI_Color(l_red, l_green, l_blue);
 
 	-- Create the SI_StillImage to evaluate 
 	l_image_to_eval := new SI_StillImage(l_blob_reference);
@@ -708,6 +717,31 @@ BEGIN
 	-- Return the % score
 	RETURN r_avg_score;
 END get_average_color_score;
+
+/*-----------------------------------------------------------------
+					Extract distance
+-------------------------------------------------------------------
+ Upload a new file to the database
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION extract_distance
+(
+    p_search_string   VARCHAR2
+)
+    RETURN VARCHAR2
+IS
+    l_distance        VARCHAR2(100);
+BEGIN
+
+    -- Find a matching MILES value
+    SELECT REGEXP_REPLACE(p_search_string, '^.*?(\d+ ?MILES).*$', '\1', 1, 0, 'i') INTO l_distance FROM SYS.DUAL;
+    
+    -- Format the string to be upper trim whitespace / strip MILES from the tag
+    l_distance := UPPER(l_distance);
+    l_distance := TRIM(REPLACE(l_distance, 'MILES', ''));
+   
+   -- Return the distance
+    RETURN TRIM(l_distance);
+END extract_distance;
 
 
 /*-----------------------------------------------------------------
@@ -737,6 +771,32 @@ BEGIN
 
 END check_valid_rating;
 
+/*-----------------------------------------------------------------
+					 CHECK POSTCODE METHOD
+-------------------------------------------------------------------
+ checks postcode
+-------------------------------------------------------------------*/
+CREATE OR REPLACE FUNCTION check_valid_postcode
+(
+	p_postcode stores.postcode%TYPE
+)
+	RETURN VARCHAR2
+IS
+	r_postcode	VARCHAR2(10);
+BEGIN
+	-- Default return string - the university
+	r_postcode := 'FALSE';
+
+	-- Check for a match and return the input string if correct
+	IF REGEXP_LIKE(UPPER(p_postcode),
+	'([A-PR-UWYZ0-9][A-HK-Y0-9][AEHMNPRTVXY0-9]?[ABEHMNPRVWXY0-9]{1,2}[0-9][ABD-HJLN-UW-Z]{2}|GIR 0AA)'
+	) THEN
+		r_postcode := 'TRUE';
+		RETURN r_postcode;
+	ELSE
+		RETURN 'FALSE';
+	END IF;
+END check_valid_postcode;
 
 /*-----------------------------------------------------------------
 					 CREATE IMAGE FROM FILE
@@ -813,11 +873,11 @@ BEGIN
 	DELETE FROM apex_application_files
 	WHERE name = p_filename;
 
-	-- Create thumbnail
-	create_blob_thumbnail(l_image_id);
-
 	-- Release lock and commit changes.
 	COMMIT;
+
+	-- Create thumbnail
+	create_blob_thumbnail(l_image_id);
 
 	-- Exception handler for locks
 	EXCEPTION 
@@ -866,117 +926,10 @@ BEGIN
 	dbms_lob.freeTemporary(l_thumb.source.localData);
 
 	COMMIT;
+
+	-- Exception handler for locks
+	EXCEPTION 
+	WHEN others
+	THEN htp.p(SQLERRM);
 END;
 
-/*-----------------------------------------------------------------
-					   GAMES CONTENT SEARCH
--------------------------------------------------------------------
- Text search for the games table
--------------------------------------------------------------------*/
-DECLARE
-
-  l_query VARCHAR2(4000);
-
-BEGIN
-
-	-- Assign values to the base query object
-	l_query :=
-        'SELECT 
-         "GAME_ID",
-         "PUBLISHER",
-         "CATEGORY",
-         "TITLE",
-         "RELEASE",
-         "DESCRIPTION",
-         "RR_PRICE",
-         "TAGS"
-         FROM "GAMES"
-         ';
-        
-    -- Append to the query, only if we have a valid search string, else return
-    -- all games in the table.
-    IF :P1_REPORT_SEARCH IS NOT NULL AND :P1_CATEGORY IS NOT NULL THEN
-        l_query := l_query || ' ' || q'{
-	               WHERE
-	               (
-	                   CONTAINS(description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
-	                   CONTAINS(title,       '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
-	                   CONTAINS(tags,        '$}'||:P1_REPORT_SEARCH||q'{') > 0 
-	               ) AND category = :P1_CATEGORY }';
-    ELSIF :P1_REPORT_SEARCH IS NOT NULL AND :P1_CATEGORY IS NULL THEN
-		l_query := l_query || ' ' || q'{
-	               WHERE
-	               (
-	                   CONTAINS(description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
-	                   CONTAINS(title,       '$}'||:P1_REPORT_SEARCH||q'{') > 0 OR
-	                   CONTAINS(tags,        '$}'||:P1_REPORT_SEARCH||q'{') > 0 
-	               )}';
-    END IF;
-RETURN l_query;
-END;
-
--- Store query
-DECLARE
-
-  l_query VARCHAR2(4000);
-
-BEGIN
-
-	-- Assign values to the base query object
-	l_query :=
-        'SELECT 
-         	stores.store_id,
-         	stores.name,
-         	stores.description,
-         	stores.postcode,
-         	COUNT(items.quantity) AS total_stock
-         FROM items
-         LEFT JOIN stores 
-         ON stores.store_id = items.store_id
-         ';
-        
-    -- Append to the query, only if we have a valid search string, else return
-    -- all games in the table.
-    IF :P1_REPORT_SEARCH IS NOT NULL THEN
-        l_query := l_query || ' ' || q'{
-               WHERE
-               (
-                   CONTAINS(description, '$}'||:P1_REPORT_SEARCH||q'{') > 0 
-               ) 		 
-			   GROUP BY 
-	 				stores.store_id, 
-	 				stores.name, 
-	 				stores.description, 
-	 				stores.postcode
-	 		   }';
-    ELSE
-          l_query := l_query || ' ' || q'{
-         	    GROUP BY 
-	 				stores.store_id, 
-	 				stores.name, 
-	 				stores.description, 
-	 				stores.postcode
-	 		   }'; 
-    END IF;
-RETURN l_query;
-END;
-
--- Spatial Index Metadata
-INSERT INTO user_sdo_geom_metadata
-(
-	table_name,
-	column_name,
-	diminfo,
-	SRID
-) 
-VALUES
-(
-	'STORES',
-	'LOCATION',
-	SDO_DIM_ARRAY
-	(
-		SDO_DIM_ELEMENT('Longitude', -180, 180, 1),
-		SDO_DIM_ELEMENT('Latitude', -90, 90, 1)
-	),
-	8307
-);
